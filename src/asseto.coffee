@@ -217,23 +217,23 @@ class Asseto
             cb(out)
         )
 
-    c_amd: (fpath, cb) ->
+    c_amd: (cb) ->
         self = @
-        @c_amd_loader(() ->
-            self.c_amd_optimize(JSON.parse(self.buildconf.replace(/-raw"/g, '-min"')), (config) ->
-                config.baseUrl = '.'
-                config.dir = self.scriptOut
-                config.appDir = self.scriptOut
+        self.c_amd_optimize(JSON.parse(self.buildconf.replace(/-raw"/g, '-min"')), (config) ->
+            config.baseUrl = '.'
+            config.dir = self.scriptOut
+            config.appDir = self.scriptOut
 
-                console.log(config)
+            #console.log(config)
 
-                requirejs.optimize(config, (report) ->
-                    self.log(config)
-                    #_.each(config.modules, (m) ->
-                    #    self.copy(m._buildPath, path.join(self.scriptOut, m.name + '.js'))
-                    #)
-                    if(cb) then cb(config)
-                )
+            requirejs.optimize(config, (report) ->
+                self.log(config)
+                #_.each(config.modules, (m) ->
+                #    self.copy(m._buildPath, path.join(self.scriptOut, m.name + '.js'))
+                #)
+                if(cb) then cb(config)
+            , (err) ->
+                self.err(err)
             )
         )
 
@@ -295,34 +295,32 @@ class Asseto
             cb()
 
     c_amd_optimize: (json, cb) ->
-        self = @
         if(!cb)
             cb = json
             json = JSON.parse(@buildconf)
-        if(json)
-            json.modules = _(json.modules).map((m) ->
-                m.create = true
-                m
-            )
-            json.optimize = "uglify2"
-            json.generateSourceMaps = true
-            json.useStrict = true
-            json.keepBuildDir = true
-            json.skipPragmas = true
-            json.cjsTranslate = false
-            json.skipDirOptimize = true
-            #json.removeCombined = true
-            #json.normalizeDirDefines = "skip"
-            json.findNestedDependencies = true
-            json.preserveLicenseComments = false
-            json.fileExclusionRegExp = "/(^\\.|-test\\.js|-raw\\.js|\\.min\\.js|\\.tmpl)/"
-            cb(json)
-        else
-            cb()
+
+        json.optimize = "uglify2"
+        #json.generateSourceMaps = true
+        json.useStrict = true
+        json.keepBuildDir = true
+        json.skipPragmas = true
+        json.cjsTranslate = false
+        json.skipDirOptimize = true
+        #json.removeCombined = true
+        #json.normalizeDirDefines = "skip"
+        json.findNestedDependencies = true
+        json.preserveLicenseComments = false
+        #json.fileExclusionRegExp = "/(^\\.|-test\\.js|-raw\\.js|\\.min\\.js|\\.tmpl)/"
+        json.modules = _(json.modules).map((m) ->
+            m.create = true
+            m
+        )
+
+        cb(json)
 
     requirejs: (conf, paths, init) ->
         """
-        require.config(""" + conf + """);
+        requirejs.config(""" + conf + """);
         require(""" + paths + """, function() {
             """ + init + """
         }, function (err) {
@@ -360,7 +358,7 @@ class Asseto
             if(S(fpath).endsWith(".json"))
                 @log("bundle " + fpath)
                 console.time("bundle")
-                self.c_amd(fpath, (config) ->
+                self.c_amd((config) ->
                     console.timeEnd("bundle")
                     ###
                     outs = []
@@ -383,16 +381,15 @@ class Asseto
             @read(file, (data) ->
                 self.buildconf = data
                 self.c_amd_testacular((data) ->
-                    if(data)
-                        fout = path.join(self.scriptOut, "main-test.js")
-                        self.write(fout, data, () ->
-                            self.c_amd_optimize((data) ->
-                                fout = path.join(self.scriptOut, "build.opt.json")
-                                self.write(fout, JSON.stringify(data), cb)
+                    fout = path.join(self.scriptOut, "main-test.js")
+                    self.write(fout, data, () ->
+                        self.c_amd_optimize((data) ->
+                            fout = path.join(self.scriptOut, "build-opt.json")
+                            self.write(fout, JSON.stringify(data), () ->
+                                self.c_amd_loader(cb)
                             )
                         )
-                    else
-                        cb()
+                    )
                 )
             )
         else if(S(fpath).endsWith('.less') || S(fpath).endsWith('.css'))
@@ -471,33 +468,32 @@ class Asseto
 
     main: (cb) ->
         self = @
-        @resetOutputDir(@styleOut, () ->
-            self.resetOutputDir(self.scriptOut, () ->
-                fn = () ->
-                    self.main1(null, (fpaths) ->
-                        self.modified.serialize()
-                        self.main2(cb)
-                    )
-                fn()
-            )
+        @main1(null, (fpaths) ->
+            self.modified.serialize()
+            self.main2(cb)
         )
 
     main1: (filter, cb) ->
         self = @
 
-        @log("#1 COMPILING")
-        console.time("compile")
+        @resetOutputDir(@styleOut, () ->
+            self.resetOutputDir(self.scriptOut, () ->
 
-        fpaths = _.filter(wrench.readdirSyncRecursive(@input), (f) ->
-            !S(f).endsWith('DS_Store') && S(f).contains('.') && (!filter || filter(f))
-        )
+                self.log("#1 COMPILING")
+                console.time("compile")
 
-        @precompileFiles(fpaths, () ->
-            console.timeEnd("compile")
-            console.log(" -> " + self.stats.cached + " cached, " + self.stats.precompiled + " compiled")
+                fpaths = _.filter(wrench.readdirSyncRecursive(self.input), (f) ->
+                    !S(f).endsWith('DS_Store') && S(f).contains('.') && (!filter || filter(f))
+                )
 
-            touch(path.join(self.scriptOut, "touch"), () ->
-                if(cb) then cb(fpaths)
+                self.precompileFiles(fpaths, () ->
+                    console.timeEnd("compile")
+                    console.log(" -> " + self.stats.cached + " cached, " + self.stats.precompiled + " compiled")
+
+                    touch(path.join(self.scriptOut, "touch"), () ->
+                        if(cb) then cb(fpaths)
+                    )
+                )
             )
         )
 
