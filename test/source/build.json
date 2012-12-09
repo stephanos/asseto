@@ -14,7 +14,7 @@
    		},
         {
             "name": "view",
-            "include": ["view/template1-tmpl", "view/template2-tmpl"]
+            "include": ["view/template1.tmpl", "view/template2.tmpl"]
         }
     ],
     "shim": {

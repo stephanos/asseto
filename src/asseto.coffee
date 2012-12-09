@@ -196,7 +196,7 @@ class Asseto
                 context.templatejs;
 
             #template = 'define("' + name + '", ["handlebars"], function(Handlebars) { return Handlebars.template(' + handlebars.precompile(mHtml) + ')});\n'
-            template = 'ember.TEMPLATES["' + name + '"] = ember.Handlebars.template(' + compileHandlebarsTemplate(mHtml) + ');'
+            template = 'ember.TEMPLATES["' + name.replace(".tmpl", "") + '"] = ember.Handlebars.template(' + compileHandlebarsTemplate(mHtml) + ');'
             template = 'define("' + name + '", ["ember"], function(ember) { ' + template + '});\n'
             cb(template)
         )
@@ -219,7 +219,7 @@ class Asseto
 
     c_amd: (cb) ->
         self = @
-        self.c_amd_optimize(JSON.parse(self.buildconf.replace(/-raw"/g, '-min"')), (config) ->
+        self.c_amd_optimize(JSON.parse(self.buildconf.replace(/\\.raw"/g, '.min"')), (config) ->
             config.baseUrl = '.'
             config.dir = self.scriptOut
             config.appDir = self.scriptOut
@@ -267,7 +267,7 @@ class Asseto
                 "conf", "load",
                 "if (cb) { cb(); }") +
             "};"
-        self.write(path.join(self.scriptOut, "main-dev.js"), init_dev, () ->
+        self.write(path.join(self.scriptOut, "main.dev.js"), init_dev, () ->
             if(cb) then cb()
         )
 
@@ -287,7 +287,7 @@ class Asseto
             cb(
                 self.requirejs(
                     JSON.stringify(conf),
-                    "['./app/app-test']",
+                    "['./app/app.test']",
                     "window.__testacular__.start();"
                 )
             )
@@ -310,7 +310,7 @@ class Asseto
         #json.normalizeDirDefines = "skip"
         json.findNestedDependencies = true
         json.preserveLicenseComments = false
-        #json.fileExclusionRegExp = "/(^\\.|-test\\.js|-raw\\.js|\\.min\\.js|\\.tmpl)/"
+        #json.fileExclusionRegExp = "/(^\\.\\.test\\.js|\\.raw\\.js|\\.min\\.js|\\.tmpl)/"
         json.modules = _(json.modules).map((m) ->
             m.create = true
             m
@@ -320,7 +320,8 @@ class Asseto
 
     requirejs: (conf, paths, init) ->
         """
-        requirejs.config(""" + conf + """);
+        require.config(""" + conf + """);
+        //console.log(""" + paths + """);
         require(""" + paths + """, function() {
             """ + init + """
         }, function (err) {
@@ -381,10 +382,10 @@ class Asseto
             @read(file, (data) ->
                 self.buildconf = data
                 self.c_amd_testacular((data) ->
-                    fout = path.join(self.scriptOut, "main-test.js")
+                    fout = path.join(self.scriptOut, "main.test.js")
                     self.write(fout, data, () ->
                         self.c_amd_optimize((data) ->
-                            fout = path.join(self.scriptOut, "build-opt.json")
+                            fout = path.join(self.scriptOut, "build.opt.json")
                             self.write(fout, JSON.stringify(data), () ->
                                 self.c_amd_loader(cb)
                             )
@@ -412,7 +413,7 @@ class Asseto
             else
                 cb()
         else if(S(fpath).endsWith('.tmpl'))
-            fout = path.join(self.scriptOut, fpath.replace(".tmpl", "-tmpl")) + ".js"
+            fout = path.join(self.scriptOut, fpath) + ".js"
             self.transform(file, fout, self.c_bars, cb)
         else if(S(fpath).endsWith('.coffee'))
             fout = path.join(self.scriptOut, fpath.replace('.coffee', '.js'))
