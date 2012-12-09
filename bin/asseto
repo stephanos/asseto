@@ -1,0 +1,14 @@
+#!/usr/bin/env node
+
+var fs 	   = require('fs');
+var asseto = require('../lib/asseto');
+
+var argv = process.argv;
+var cmd = argv[2]
+
+if (cmd == "bundle" || cmd == "optimize")
+    asseto.bundle(argv)
+else if(cmd == "compile")
+    asseto.compile(argv)
+else if(cmd == "compilejs")
+    asseto.compilejs(argv)

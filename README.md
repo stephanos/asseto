@@ -1,0 +1,1 @@
+A simple proprietary asset processing and bundling library.

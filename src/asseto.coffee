@@ -1,0 +1,507 @@
+console.time("init")
+console.time("total")
+
+S = require 'string'
+os = require 'os'
+fs = require 'fs'
+vm = require 'vm'
+sys = require 'sys'
+mkdirp = require 'mkdirp'
+cluster = require 'cluster'
+less = require 'less'
+touch = require 'touch'
+uglify = require 'uglify-js'
+lastmodified = require 'lastmodified'
+wrench = require 'wrench'
+path = require 'path'
+crypto = require 'crypto'
+requirejs = require 'requirejs'
+htmlmini = require 'html-minifier'
+_ = require 'underscore'
+coffee = require 'coffee-script'
+handlebars = require 'handlebars'
+
+class Asseto
+
+    constructor: (args = {}) ->
+        if args.length < 5
+            @err("not enough parameters")
+
+        @input = @chkpath(args[3])
+        @output = @chkpath(args[4])
+
+        @styleOut = path.join(@output, 'styles')
+        @scriptOut = path.join(@output, 'scripts')
+        @pwd = path.dirname(args[1])
+        #@cacheDir = os.tmpDir() + 'asseto/'
+        @modified = lastmodified @input, "cachedb"
+        @stats =
+            cached: 0
+            precompiled: 0
+
+    chkpath: (p) ->
+        if(S(p).startsWith('/Users'))
+            p
+        else
+            path.join(process.cwd(), p)
+
+    ############################
+    ##### UTIL
+
+    log: (s) ->
+        #console.log(s)
+
+    err: (e) ->
+        console.error(e)
+        process.exit(1)
+
+    write: (f, data, cb) ->
+        self = @
+        @log('writing ' + f)
+        fn = ->
+            fs.writeFile(f, data, 'utf8', (e) ->
+                if(e) then self.err(e)
+                if(cb) then cb()
+            )
+        fdir = path.dirname(f)
+        if(fdir != @styleOut && fdir != @scriptOut)
+            @mkdir(path.dirname(f), () -> fn())
+        else
+            fn()
+
+    read: (f, cb) ->
+        self = @
+        #@log("read " + f)
+        fs.readFile(f, 'utf-8', (e, data) ->
+            if(e)
+                self.err(e)
+            else
+                cb(data)
+        )
+
+    mkdir: (f, cb) ->
+        self = @
+        if(f != '.')
+            @log("mkdir " + f)
+            mkdirp(f, (e) ->
+                if(e)  then self.err(e)
+                if(cb) then cb(f)
+            )
+        else
+            if(cb) then cb(f)
+
+    copy: (fin, fout, cb) ->
+        self = @
+        @log("copy " + fin + " to " + fout)
+        self.read(fin, (data) ->
+            self.mkdir(path.dirname(fout), () ->
+                self.write(fout, data, cb)
+            )
+        )
+
+
+    ############################
+    ##### COMPILE
+
+    c_style: (f, cb) ->
+        self = @
+        @log("less " + path.relative(self.input, f))
+        dir = path.dirname(f)
+        fn = path.basename(f)
+        @read(f, (data) ->
+            new less.Parser(
+                filename: fn, paths: [dir]
+            ).parse(data, (e, tree) ->
+                if (e)
+                    less.writeError(e)
+                    process.exit(1)
+                else
+                    try
+                        css = tree.toCSS
+                            "compress": true, "yui-compress": false
+                        if(cb) then cb(css)
+                    catch e
+                        less.writeError(e)
+                        process.exit(1)
+            )
+        )
+
+    c_coffee: (f, cb) ->
+        self = @
+        @log("coffee " + path.relative(self.input, f))
+        self.read(f, (data) ->
+            cb(
+                try
+                    coffee.compile(data, {'bare': true})
+                catch e
+                    console.error('"' + path.basename(f) + '"')
+                    throw e
+            )
+        )
+
+    c_bars: (f, cb) ->
+        self = @
+        @read(f, (data) ->
+            fname = path.basename(f)
+            fdir = path.relative(self.input, path.dirname(f))
+            name = (fdir + '/' + fname.replace('.', '-')).replace('app/views/', 'view/')
+            self.log("hbars " + path.relative(self.input, f))
+            mHtml = htmlmini.minify(data, {collapseWhitespace: true, removeComments: true}).replace(/\\/g, '').replace(/}{/g, '} {')
+
+            compileHandlebarsTemplate = (str) ->
+                exports.emberjs ?= fs.readFileSync (__dirname + '/vendor/ember.js'), 'utf8'
+                exports.hbarsjs ?= fs.readFileSync (__dirname + '/vendor/handlebars.js'), 'utf8'
+
+                # dummy jQuery
+                jQuery = -> jQuery
+                jQuery.ready = -> jQuery
+                jQuery.inArray = -> jQuery
+                jQuery.jquery = "1.7.1"
+                jQuery.event = {fixHooks: {}}
+                # dummy DOM element
+                element =
+                    firstChild: -> element
+                    innerHTML: -> element
+                sandbox =
+                    # DOM
+                    document:
+                        createRange: false
+                        createElement: -> element
+
+                    # Console
+                    console: console
+
+                    # jQuery
+                    jQuery: jQuery
+                    $: jQuery
+
+                    # handlebars template to compile
+                    template: str
+
+                    # compiled handlebars template
+                    templatejs: null
+
+                # window
+                sandbox.window = sandbox
+
+                # create a context for the vm using the sandbox data
+                context = vm.createContext sandbox
+
+                # load ember and handlebars in the vm
+                vm.runInContext exports.hbarsjs, context, 'handlebars.js'
+                vm.runInContext exports.emberjs, context, 'ember.js'
+
+                # compile the handlebars template inside the vm context
+                vm.runInContext 'templatejs = Ember.Handlebars.precompile(template).toString();', context
+                context.templatejs;
+
+            #template = 'define("' + name + '", ["handlebars"], function(Handlebars) { return Handlebars.template(' + handlebars.precompile(mHtml) + ')});\n'
+            template = 'ember.TEMPLATES["' + name + '"] = ember.Handlebars.template(' + compileHandlebarsTemplate(mHtml) + ');'
+            template = 'define("' + name + '", ["ember"], function(ember) { ' + template + '});\n'
+            cb(template)
+        )
+
+    c_uglify: (f, cb) ->
+        self = @
+        @log("uglify " + path.relative(self.input, f))
+        self.read(f, (data) ->
+            # https://github.com/mishoo/UglifyJS2
+            ast = uglify.parse(data)
+            ast.figure_out_scope()
+            compressor = uglify.Compressor()
+            ast = ast.transform(compressor)
+            ast.figure_out_scope()
+            ast.compute_char_frequency()
+            ast.mangle_names()
+            out = ast.print_to_string()
+            cb(out)
+        )
+
+    c_amd: (fpath, cb) ->
+        self = @
+        config = JSON.parse(@buildconf.replace(/-raw"/g, '-min"'))
+        config.modules = _(config.modules).map((m) ->
+            m.create = true
+            m
+        )
+        #console.log(config)
+
+        config.baseUrl = '.'
+        config.dir = @scriptOut
+        config.appDir = @scriptOut
+
+        config.useStrict = true
+        config.optimize = 'none'
+        config.keepBuildDir = true
+        config.skipPragmas = true
+        config.cjsTranslate = false
+        config.skipDirOptimize = true
+        config.normalizeDirDefines = "skip"
+        config.findNestedDependencies = false
+        config.preserveLicenseComments = false
+        config.fileExclusionRegExp = "/(^\\.|-test\\.js|-raw\\.js|\\.min\\.js|\\.tmpl)/"
+
+        requirejs.optimize(config, (report) ->
+            self.log(config)
+            #_.each(config.modules, (m) ->
+            #    self.copy(m._buildPath, path.join(self.scriptOut, m.name + '.js'))
+            #)
+            if(cb) then cb(config)
+        )
+
+    c_testacular: (f, cb) ->
+        self = @
+        json = JSON.parse(@buildconf)
+        if(json)
+            conf = {}
+            _(_(json).keys()).each((k) ->
+                val = json[k]
+                if(_.isObject(val) || _.isArray(val))
+                    conf[k] = val
+            )
+            conf.baseUrl = "/base/"
+            conf.modules = undefined
+            #conf.urlArgs = "d=" + (new Date()).getTime()
+            cb(
+                """
+                require.config(
+                  """ + JSON.stringify(conf) + """
+                );
+
+                require(['./app/app-test'], function() {
+                  window.__testacular__.start();
+                });
+                """
+            )
+        else
+            cb()
+
+
+    ############################
+    ##### MANAGE
+
+    minifier: (files, cb) ->
+        self = @
+        fn = () -> self.minifier(_.tail(files), cb)
+        if(_.isEmpty(files))
+            if(cb) then cb()
+        else
+            f = _.head(files)
+            fname = path.basename(f)
+            if(fname != 'test.js' && fname != '.')
+                fout = path.join(self.scriptOut, fname.replace('.js', '.min.js'))
+                self.transform(f, fout, self.c_uglify, fn)
+            else
+                fn()
+
+    bundler: (fpaths, cb) ->
+        self = @
+        fn = () -> self.bundler(_.tail(fpaths), cb)
+        if(_.isEmpty(fpaths))
+            if(cb) then cb()
+        else
+            fpath = _.head(fpaths)
+            if(S(fpath).endsWith(".json"))
+                @log("bundle " + fpath)
+                console.time("bundle")
+                self.c_amd(fpath, (config) ->
+                    console.timeEnd("bundle")
+                    ###
+                    outs = []
+                    _.each(config.modules, (m) -> outs.push(m._buildPath))
+                    console.time("minify")
+                    self.minifier(outs, () ->
+                        console.timeEnd("minify")
+                        fn()
+                    )
+                    ###
+                    fn()
+                )
+            else
+                fn()
+
+    precompileFile: (fpath, cb) ->
+        self = @
+        file = path.join(self.input, fpath)
+        if(S(fpath).endsWith('build.json')) # || S(fpath).endsWith('Spec.coffee')
+            @read(file, (data) ->
+                self.buildconf = data
+                self.c_testacular(file, (data) ->
+                    if(data)
+                        fout = path.join(self.scriptOut, "main-test.js")
+                        self.write(fout, data, cb)
+                    else
+                        cb()
+                )
+            )
+        else if(S(fpath).endsWith('.less') || S(fpath).endsWith('.css'))
+            if(path.relative(file, self.input) == '../..')
+                isSub = S(fpath).contains('.sub')
+                self.c_style(file, (data) ->
+                    if(isSub)
+                        fout = path.join(self.scriptOut, fpath.replace('.sub.less', '.js'))
+                        dn = path.basename(path.join(file, '..')) + '/' + path.basename(fout).replace('.js', '')
+                        "define('" + dn + "', function () {\n" +
+                        "var style = module.exports = document.createElement('style');\n" +
+                        "style.appendChild(document.createTextNode('" + data + "'));\n" +
+                        "});"
+                        self.write(fout, dn, cb)
+                        # TODO: escape data?
+                    else
+                        fout = path.join(self.styleOut, path.basename(file).replace('.less', '.css'))
+                        self.write(fout, data, cb)
+                )
+            else
+                cb()
+        else if(S(fpath).endsWith('.tmpl'))
+            fout = path.join(self.scriptOut, fpath.replace(".tmpl", "-tmpl")) + ".js"
+            self.transform(file, fout, self.c_bars, cb)
+        else if(S(fpath).endsWith('.coffee'))
+            fout = path.join(self.scriptOut, fpath.replace('.coffee', '.js'))
+            self.transform(file, fout, self.c_coffee, cb)
+        else
+            fout = path.join(self.scriptOut, fpath)
+            self.transform(file, fout, (f, cb) ->
+                self.copy(f, fout, cb)
+            , cb)
+
+    precompileFiles: (fpaths, cb) ->
+        self = @
+        next = () -> self.precompileFiles(_.tail(fpaths), cb)
+
+        if(_.isEmpty(fpaths))
+            cb()
+        else
+            fpath = _.head(fpaths)
+            self.precompileFile(fpath, next)
+
+    transform: (source, target, action, skip, chg) ->
+        self = @
+
+        exec = () ->
+            self.stats.precompiled = self.stats.precompiled + 1
+            action.apply(self, [source, (data) ->
+                if (chg) then data = chg(data)
+                if (data)
+                    self.write(target, data, skip)
+                else
+                    skip()
+            ])
+
+        #self.log(path.relative(__dirname, source))
+        @modified.sinceLastCall(path.relative(self.input, source), (err, wasModified) ->
+            if err
+                self.err(err)
+            else
+                if wasModified
+                    # file modified: execute!
+                    exec()
+                else
+                    fs.readFile(target, 'utf-8', (err, data) ->
+                        if err
+                            # no cache file: execute!
+                            exec()
+                        else
+                            # cache file found!
+                            self.stats.cached = self.stats.cached + 1
+                            skip()
+                    )
+        )
+
+    main: (cb) ->
+        self = @
+        @resetOutputDir(@styleOut, () ->
+            self.resetOutputDir(self.scriptOut, () ->
+                fn = () ->
+                    self.main1(null, (fpaths) ->
+                        self.modified.serialize()
+                        self.main2(cb)
+                    )
+                fn()
+            )
+        )
+
+    main1: (filter, cb) ->
+        self = @
+
+        @log("#1 COMPILING")
+        console.time("compile")
+
+        fpaths = _.filter(wrench.readdirSyncRecursive(@input), (f) ->
+            !S(f).endsWith('DS_Store') && S(f).contains('.') && (!filter || filter(f))
+        )
+
+        @precompileFiles(fpaths, () ->
+            console.timeEnd("compile")
+            console.log(" -> " + self.stats.cached + " cached, " + self.stats.precompiled + " compiled")
+
+            rconf = JSON.parse(self.buildconf)
+            rconf.baseUrl = "/assets/js/"
+            data = """
+                    require.config(""" + JSON.stringify(rconf) + """);
+                    var Initializer =
+                        function load(fs, cb) {
+                            // TODO
+                        };
+                   """
+            self.write(path.join(self.scriptOut, "main-dev.js"), data, () ->
+                data = """
+                       var Initializer =
+                           function load(fs, cb) {
+                               Modernizr.load({
+                                   load: fs,
+                                   complete: cb
+                               });
+                           };
+                       """
+                self.write(path.join(self.scriptOut, "main-prod.js"), data, () ->
+                    touch(path.join(self.scriptOut, "touch"), () ->
+                        if(cb) then cb(fpaths)
+                    )
+                )
+            )
+        )
+
+    main2: (cb) ->
+        # TODO: check first if ANY of the JS files changed
+        @log("#2 BUNDLING")
+        bfpaths = _.filter(fs.readdirSync(@input), (f) -> S(f).contains('build'))
+        @bundler(bfpaths, () ->
+            if(cb) then cb()
+        )
+
+    resetOutputDir: (dir, cb) ->
+        self = @
+        @mkdir(dir, () ->
+            fs.stat(dir, (e, stats) ->
+                if(e)
+                    self.err(e)
+                else
+                    age = (new Date().getTime()) - (stats.ctime.getTime())
+                    if(age < 1 * 3600000) # x * hours
+                        cb()
+                    else
+                        console.log("#0 RESET: " + path.basename(dir))
+                        wrench.rmdirSyncRecursive(dir)
+                        self.mkdir(dir, cb)
+            )
+        )
+
+exports.compile = (args, cb) ->
+    a = new Asseto(args)
+    #a.output = a.output
+    a.main1()
+
+exports.compilejs = (args, cb) ->
+    a = new Asseto(args)
+    #a.output = a.output
+    a.main1(
+        ((f) -> !S(f).endsWith('.less')), () -> if(cb) then cb()
+    )
+
+exports.bundle = (args) ->
+    a = new Asseto(args)
+    console.timeEnd("init")
+    a.main(() ->
+        console.timeEnd("total")
+    )

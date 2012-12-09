@@ -1,0 +1,28 @@
+{
+    "modules": [
+    	{
+    		"name": "script",
+    		"include": ["library/script2-raw"]
+   		},
+    	{
+    		"name": "controller",
+   			"include": ["controller/controller2"]
+   		},
+    	{
+    		"name": "style",
+   			"include": ["style/form"]
+   		},
+        {
+            "name": "view",
+            "include": ["view/template1-tmpl", "view/template2-tmpl"]
+        }
+    ],
+    "shim": {
+        "library/external.js":{
+            "exports":"Test"
+        }
+    },
+    "paths": {
+        "ember":"library/ember"
+    }
+}
