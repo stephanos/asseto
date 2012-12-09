@@ -219,37 +219,59 @@ class Asseto
 
     c_amd: (fpath, cb) ->
         self = @
-        config = JSON.parse(@buildconf.replace(/-raw"/g, '-min"'))
-        config.modules = _(config.modules).map((m) ->
-            m.create = true
-            m
-        )
-        #console.log(config)
+        @c_amd_loader(() ->
+            self.c_amd_optimize(JSON.parse(self.buildconf.replace(/-raw"/g, '-min"')), (config) ->
+                config.baseUrl = '.'
+                config.dir = self.scriptOut
+                config.appDir = self.scriptOut
 
-        config.baseUrl = '.'
-        config.dir = @scriptOut
-        config.appDir = @scriptOut
+                console.log(config)
 
-        config.useStrict = true
-        config.optimize = 'none'
-        config.keepBuildDir = true
-        config.skipPragmas = true
-        config.cjsTranslate = false
-        config.skipDirOptimize = true
-        config.normalizeDirDefines = "skip"
-        config.findNestedDependencies = false
-        config.preserveLicenseComments = false
-        config.fileExclusionRegExp = "/(^\\.|-test\\.js|-raw\\.js|\\.min\\.js|\\.tmpl)/"
-
-        requirejs.optimize(config, (report) ->
-            self.log(config)
-            #_.each(config.modules, (m) ->
-            #    self.copy(m._buildPath, path.join(self.scriptOut, m.name + '.js'))
-            #)
-            if(cb) then cb(config)
+                requirejs.optimize(config, (report) ->
+                    self.log(config)
+                    #_.each(config.modules, (m) ->
+                    #    self.copy(m._buildPath, path.join(self.scriptOut, m.name + '.js'))
+                    #)
+                    if(cb) then cb(config)
+                )
+            )
         )
 
-    c_testacular: (f, cb) ->
+    c_amd_loader: (cb) ->
+        self = @
+        config = JSON.parse(@buildconf)
+        modules = config.modules
+        config.modules = undefined
+        init_dev =
+            """var Loader =
+                function load(base, fs, cb) {
+                var conf = """ + JSON.stringify(config) + """;
+                var modules = """ + JSON.stringify(modules) + """;
+                conf.baseUrl = base;
+                var load = [];
+                for (var i = 0; i < modules.length; i++) {
+                    var mod = modules[i];
+                    var m_name = mod.name;
+                    for (var j = 0; j < fs.length; j++) {
+                        var f_name = fs[j].replace(".js", "");;
+                        if(f_name == m_name) {
+                            var m_incl = mod.include;
+                            for (var k = 0; k < m_incl.length; k++) {
+                                load.push(m_incl[k]);
+                            }
+                        }
+                    }
+                }
+
+            """ + self.requirejs(
+                "conf", "load",
+                "if (cb) { cb(); }") +
+            "};"
+        self.write(path.join(self.scriptOut, "main-dev.js"), init_dev, () ->
+            if(cb) then cb()
+        )
+
+    c_amd_testacular: (cb) ->
         self = @
         json = JSON.parse(@buildconf)
         if(json)
@@ -263,19 +285,53 @@ class Asseto
             conf.modules = undefined
             #conf.urlArgs = "d=" + (new Date()).getTime()
             cb(
-                """
-                require.config(
-                  """ + JSON.stringify(conf) + """
-                );
-
-                require(['./app/app-test'], function() {
-                  window.__testacular__.start();
-                });
-                """
+                self.requirejs(
+                    JSON.stringify(conf),
+                    "['./app/app-test']",
+                    "window.__testacular__.start();"
+                )
             )
         else
             cb()
 
+    c_amd_optimize: (json, cb) ->
+        self = @
+        if(!cb)
+            cb = json
+            json = JSON.parse(@buildconf)
+        if(json)
+            json.modules = _(json.modules).map((m) ->
+                m.create = true
+                m
+            )
+            json.optimize = "uglify2"
+            json.generateSourceMaps = true
+            json.useStrict = true
+            json.keepBuildDir = true
+            json.skipPragmas = true
+            json.cjsTranslate = false
+            json.skipDirOptimize = true
+            #json.removeCombined = true
+            #json.normalizeDirDefines = "skip"
+            json.findNestedDependencies = true
+            json.preserveLicenseComments = false
+            json.fileExclusionRegExp = "/(^\\.|-test\\.js|-raw\\.js|\\.min\\.js|\\.tmpl)/"
+            cb(json)
+        else
+            cb()
+
+    requirejs: (conf, paths, init) ->
+        """
+        require.config(""" + conf + """);
+        require(""" + paths + """, function() {
+            """ + init + """
+        }, function (err) {
+            if (err.requireType === 'timeout') {
+                throw Error('could not load module ' + err.requireModules);
+            }
+            throw err;
+        });
+        """
 
     ############################
     ##### MANAGE
@@ -326,10 +382,15 @@ class Asseto
         if(S(fpath).endsWith('build.json')) # || S(fpath).endsWith('Spec.coffee')
             @read(file, (data) ->
                 self.buildconf = data
-                self.c_testacular(file, (data) ->
+                self.c_amd_testacular((data) ->
                     if(data)
                         fout = path.join(self.scriptOut, "main-test.js")
-                        self.write(fout, data, cb)
+                        self.write(fout, data, () ->
+                            self.c_amd_optimize((data) ->
+                                fout = path.join(self.scriptOut, "build.opt.json")
+                                self.write(fout, JSON.stringify(data), cb)
+                            )
+                        )
                     else
                         cb()
                 )
@@ -435,30 +496,8 @@ class Asseto
             console.timeEnd("compile")
             console.log(" -> " + self.stats.cached + " cached, " + self.stats.precompiled + " compiled")
 
-            rconf = JSON.parse(self.buildconf)
-            rconf.baseUrl = "/assets/js/"
-            data = """
-                    require.config(""" + JSON.stringify(rconf) + """);
-                    var Initializer =
-                        function load(fs, cb) {
-                            // TODO
-                        };
-                   """
-            self.write(path.join(self.scriptOut, "main-dev.js"), data, () ->
-                data = """
-                       var Initializer =
-                           function load(fs, cb) {
-                               Modernizr.load({
-                                   load: fs,
-                                   complete: cb
-                               });
-                           };
-                       """
-                self.write(path.join(self.scriptOut, "main-prod.js"), data, () ->
-                    touch(path.join(self.scriptOut, "touch"), () ->
-                        if(cb) then cb(fpaths)
-                    )
-                )
+            touch(path.join(self.scriptOut, "touch"), () ->
+                if(cb) then cb(fpaths)
             )
         )
 
