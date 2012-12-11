@@ -202,7 +202,10 @@ class Asseto
                 vm.runInContext exports.emberjs, context, 'ember.js'
 
                 # compile the handlebars template inside the vm context
-                vm.runInContext 'templatejs = Ember.Handlebars.precompile(template).toString();', context
+                try
+                    vm.runInContext 'templatejs = Ember.Handlebars.precompile(template).toString();', context
+                catch err
+                    throw new Error("in template '" + fname + "' - " + err.message)
                 context.templatejs;
 
             #template = 'define("' + name + '", ["handlebars"], function(Handlebars) { return Handlebars.template(' + handlebars.precompile(mHtml) + ')});\n'
