@@ -144,9 +144,19 @@ class Asseto
         @read(f, (data) ->
             fname = path.basename(f)
             fdir = path.relative(self.input, path.dirname(f))
-            name = (fdir + '/' + fname.replace('.', '-')).replace('app/views/', 'view/')
+            name = (fdir + '/' + fname)
+                .replace('app/components/', '')
+                .replace(".tmpl", "")
+                .replace("view/", "")
+            name_arr = name.split("/").reverse()
+            if name_arr.length > 1 && name_arr[0] == name_arr[1]
+                name = S(name).left(name.length - name_arr[1].length - 1)
             self.log("hbars " + path.relative(self.input, f))
-            mHtml = htmlmini.minify(data, {collapseWhitespace: true, removeComments: true}).replace(/\\/g, '').replace(/}{/g, '} {')
+            #mHtml = htmlmini.minify(data, {collapseWhitespace: true, removeComments: true}).replace(/\\/g, '').replace(/}{/g, '} {')
+            mHtml = data
+                #.replace(/<!--[\s\S]*?-->/g, "")   # remove comments
+                .replace(/\s+/g, ' ')               # remove whitespaces
+                #.replace(/}{/g, '} {')
 
             compileHandlebarsTemplate = (str) ->
                 exports.emberjs ?= fs.readFileSync (__dirname + '/vendor/ember.js'), 'utf8'
@@ -196,8 +206,8 @@ class Asseto
                 context.templatejs;
 
             #template = 'define("' + name + '", ["handlebars"], function(Handlebars) { return Handlebars.template(' + handlebars.precompile(mHtml) + ')});\n'
-            template = 'ember.TEMPLATES["' + name.replace(".tmpl", "") + '"] = ember.Handlebars.template(' + compileHandlebarsTemplate(mHtml) + ');'
-            template = 'define("' + name + '", ["ember"], function(ember) { ' + template + '});\n'
+            template = 'ember.TEMPLATES["' + name + '"] = ember.Handlebars.template(' + compileHandlebarsTemplate(mHtml) + ');'
+            template = 'define(["ember"], function(ember) { ' + template + '});\n'
             cb(template)
         )
 
@@ -415,8 +425,10 @@ class Asseto
         else if(S(fpath).endsWith('.tmpl'))
             fout = path.join(self.scriptOut, fpath) + ".js"
             self.transform(file, fout, self.c_bars, cb)
-        else if(S(fpath).endsWith('.coffee'))
-            fout = path.join(self.scriptOut, fpath.replace('.coffee', '.js'))
+        else if(S(fpath).endsWith('.coffee') || S(fpath).endsWith('.ctrl') || S(fpath).endsWith('.view') ||
+                S(fpath).endsWith('.route') || S(fpath).endsWith('.router') || S(fpath).endsWith('.test') ||
+                S(fpath).endsWith('.mdl') || S(fpath).endsWith('.model') || S(fpath).endsWith('.coll'))
+            fout = path.join(self.scriptOut, fpath.replace(".coffee", "") + '.js')
             self.transform(file, fout, self.c_coffee, cb)
         else
             fout = path.join(self.scriptOut, fpath)
