@@ -154,8 +154,8 @@ class Asseto
             self.log("hbars " + path.relative(self.input, f))
             #mHtml = htmlmini.minify(data, {collapseWhitespace: true, removeComments: true}).replace(/\\/g, '').replace(/}{/g, '} {')
             mHtml = data
+                .replace(/\s+/g, ' ')               # shrink whitespaces
                 #.replace(/<!--[\s\S]*?-->/g, "")   # remove comments
-                .replace(/\s+/g, ' ')               # remove whitespaces
                 #.replace(/}{/g, '} {')
 
             compileHandlebarsTemplate = (str) ->
