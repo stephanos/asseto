@@ -158,6 +158,9 @@ class Asseto
                 #.replace(/<!--[\s\S]*?-->/g, "")   # remove comments
                 #.replace(/}{/g, '} {')
 
+            if mHtml.indexOf("<!--") >= 0
+                throw new Error "template '" + fname + "' contains HTML comments!"
+
             compileHandlebarsTemplate = (str) ->
                 exports.emberjs ?= fs.readFileSync (__dirname + '/vendor/ember.js'), 'utf8'
                 exports.hbarsjs ?= fs.readFileSync (__dirname + '/vendor/handlebars.js'), 'utf8'
