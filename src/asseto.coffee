@@ -315,6 +315,10 @@ class Asseto
             cb = json
             json = JSON.parse(@buildconf)
 
+        json.baseUrl = "."
+        json.dir = "."
+        json.appDir = "."
+
         json.optimize = "uglify2"
         #json.generateSourceMaps = true
         json.useStrict = true
@@ -341,9 +345,7 @@ class Asseto
         require(""" + paths + """, function() {
             """ + init + """
         }, function (err) {
-            if (err.requireType === 'timeout') {
-                throw Error('could not load module ' + err.requireModules);
-            }
+            console.error(err.message);
             throw err;
         });
         """
@@ -410,7 +412,9 @@ class Asseto
                 )
             )
         else if(S(fpath).endsWith('.less') || S(fpath).endsWith('.css'))
-            if(path.relative(file, self.input) == '../..')
+            console.log(fpath)
+            if(S(fpath).startsWith('style'))
+                console.log(fpath)
                 isSub = S(fpath).contains('.sub')
                 self.c_style(file, (data) ->
                     if(isSub)
