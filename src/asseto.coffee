@@ -413,8 +413,8 @@ class Asseto
             )
         else if(S(fpath).endsWith('.less') || S(fpath).endsWith('.css'))
             console.log(fpath)
-            if(S(fpath).startsWith('style'))
-                console.log(fpath)
+            if(path.relative(file, self.input) == '../..' && S(fpath).startsWith('style'))
+                #console.log(fpath)
                 isSub = S(fpath).contains('.sub')
                 self.c_style(file, (data) ->
                     if(isSub)
