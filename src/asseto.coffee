@@ -150,7 +150,7 @@ class Asseto
                 .replace("view/", "")
             name_arr = name.split("/").reverse()
             if name_arr.length > 1 && name_arr[0] == name_arr[1]
-                name = S(name).left(name.length - name_arr[1].length - 1)
+                name = S(name).left(name.length - name_arr[1].length - 1).toString()
             self.log("hbars " + path.relative(self.input, f))
             #mHtml = htmlmini.minify(data, {collapseWhitespace: true, removeComments: true}).replace(/\\/g, '').replace(/}{/g, '} {')
             mHtml = data
@@ -212,7 +212,7 @@ class Asseto
                 context.templatejs;
 
             #template = 'define("' + name + '", ["handlebars"], function(Handlebars) { return Handlebars.template(' + handlebars.precompile(mHtml) + ')});\n'
-            template = 'ember.TEMPLATES["' + name + '"] = ember.Handlebars.template(' + compileHandlebarsTemplate(mHtml) + ');'
+            template = 'ember.TEMPLATES["' + name.replace(/\//g, "_") + '"] = ember.Handlebars.template(' + compileHandlebarsTemplate(mHtml) + ');'
             template = 'define(["ember"], function(ember) { ' + template + '});\n'
             cb(template)
         )
@@ -412,9 +412,7 @@ class Asseto
                 )
             )
         else if(S(fpath).endsWith('.less') || S(fpath).endsWith('.css'))
-            console.log(fpath)
             if(path.relative(file, self.input) == '../..' && S(fpath).startsWith('style'))
-                #console.log(fpath)
                 isSub = S(fpath).contains('.sub')
                 self.c_style(file, (data) ->
                     if(isSub)
