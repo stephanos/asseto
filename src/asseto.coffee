@@ -145,7 +145,9 @@ class Asseto
             fname = path.basename(f)
             fdir = path.relative(self.input, path.dirname(f))
             name = (fdir + '/' + fname)
-                .replace('app/components/', "")
+                .replace("app/", "")
+                .replace("components/app", "app/")
+                .replace("components/", "")
                 .replace(".tmpl", "")
                 .replace("view/", "")
             name_arr = name.split("/").reverse()
@@ -166,39 +168,12 @@ class Asseto
                 exports.emberjs ?= fs.readFileSync (__dirname + '/vendor/ember.js'), 'utf8'
                 exports.hbarsjs ?= fs.readFileSync (__dirname + '/vendor/handlebars.js'), 'utf8'
 
-                # dummy jQuery
-                jQuery = -> jQuery
-                jQuery.ready = -> jQuery
-                jQuery.inArray = -> jQuery
-                jQuery.jquery = "1.7.1"
-                jQuery.event = {fixHooks: {}}
-                # dummy DOM element
-                element =
-                    firstChild: -> element
-                    innerHTML: -> element
+                # create a context for the vm using the sandbox data
                 sandbox =
-                    # DOM
-                    document:
-                        createRange: false
-                        createElement: -> element
-
-                    # Console
-                    console: console
-
-                    # jQuery
-                    jQuery: jQuery
-                    $: jQuery
-
-                    # handlebars template to compile
+                    Ember:
+                        assert: ->
                     template: str
 
-                    # compiled handlebars template
-                    templatejs: null
-
-                # window
-                sandbox.window = sandbox
-
-                # create a context for the vm using the sandbox data
                 context = vm.createContext sandbox
 
                 # load ember and handlebars in the vm
@@ -207,12 +182,11 @@ class Asseto
 
                 # compile the handlebars template inside the vm context
                 try
-                    vm.runInContext 'templatejs = Ember.Handlebars.precompile(template).toString();', context
+                    vm.runInContext 'var templatejs = Ember.Handlebars.precompile(template).toString();', context
                 catch err
                     throw new Error("in template '" + fname + "' - " + err.message)
                 context.templatejs;
 
-            #template = 'define("' + name + '", ["handlebars"], function(Handlebars) { return Handlebars.template(' + handlebars.precompile(mHtml) + ')});\n'
             template = 'Em.TEMPLATES["' + name + '"] = Em.Handlebars.template(' + compileHandlebarsTemplate(mHtml) + ');'
             template = 'define(["ember"], function(Em) { ' + template + '});\n'
             cb(template)
