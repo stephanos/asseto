@@ -210,7 +210,7 @@ class Asseto
 
     c_amd: (cb) ->
         self = @
-        self.c_amd_optimize(JSON.parse(self.buildconf.replace(/\\.raw"/g, '.min"')), (config) ->
+        self.c_amd_optimize(JSON.parse(self.buildconf.replace(/\\.dev"/g, '.prod"')), (config) ->
             config.baseUrl = '.'
             config.dir = self.scriptOut
             config.appDir = self.scriptOut
