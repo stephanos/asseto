@@ -153,7 +153,7 @@ class Asseto
             name_arr = name.split("/").reverse()
             if name_arr.length > 1 && name_arr[0] == name_arr[1]
                 name = S(name).left(name.length - name_arr[1].length - 1).s
-            name = S(name.replace(/\//g, "-")).camelize().s
+            name = name.replace(/\//g, "/") #S().camelize().s
             self.log("hbars " + path.relative(self.input, f))
             #mHtml = htmlmini.minify(data, {collapseWhitespace: true, removeComments: true}).replace(/\\/g, '').replace(/}{/g, '} {')
             mHtml = data
