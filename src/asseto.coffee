@@ -144,13 +144,15 @@ class Asseto
         @read(f, (data) ->
             fname = path.basename(f)
             fdir = path.relative(self.input, path.dirname(f))
-            name = (fdir + '/' + fname)
-                .replace("app/", "")
-                .replace("components/app", "app/")
+            name = fdir + "/" + fname
+            #console.log(name)
+            name = name
                 .replace("components/", "")
+                .replace("app/", "")
                 .replace(".tmpl", "")
                 .replace("view/", "")
             name_arr = name.split("/").reverse()
+            #console.log(name)
             if name_arr.length > 1 && name_arr[0] == name_arr[1]
                 name = S(name).left(name.length - name_arr[1].length - 1).s
             name = name.replace(/\/\//g, "/") #S().camelize().s
