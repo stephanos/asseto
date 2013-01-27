@@ -144,17 +144,25 @@ class Asseto
         @read(f, (data) ->
             fname = path.basename(f)
             fdir = path.relative(self.input, path.dirname(f))
-            name = fdir + "/" + fname
+            name =
+              if fname.indexOf(".root.") >= 0
+                fname
+              else
+                fdir + "/" + fname
             #console.log(name)
             name = name
                 .replace("components/", "")
                 .replace("app/", "")
+                .replace(".root.tmpl", "")
                 .replace(".tmpl", "")
                 .replace("view/", "")
             name_arr = name.split("/").reverse()
             #console.log(name)
             if name_arr.length > 1 && name_arr[0] == name_arr[1]
                 name = S(name).left(name.length - name_arr[1].length - 1).s
+                name_arr = name.split("/").reverse()
+            if name_arr.length > 2
+                name = name_arr[1] + "/" + name_arr[0]
             name = name.replace(/\/\//g, "/") #S().camelize().s
             self.log("hbars " + path.relative(self.input, f))
             #mHtml = htmlmini.minify(data, {collapseWhitespace: true, removeComments: true}).replace(/\\/g, '').replace(/}{/g, '} {')
