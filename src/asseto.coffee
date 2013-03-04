@@ -516,7 +516,7 @@ class Asseto
                     self.err(e)
                 else
                     age = (new Date().getTime()) - (stats.ctime.getTime())
-                    if(age < 1 * 3600000) # x * hours
+                    if(age < 3600000) # x * hours
                         cb()
                     else
                         console.log("#0 RESET: " + path.basename(dir))

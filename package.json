@@ -1,7 +1,7 @@
 {
   "name": "asseto",
   "description": "Asset Compiler",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "main": "./lib/asseto",
   "bin": {
     "asseto": "bin/asseto"
