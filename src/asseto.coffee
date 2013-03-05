@@ -283,11 +283,17 @@ class Asseto
             conf.modules = undefined
             #conf.urlArgs = "d=" + (new Date()).getTime()
             cb(
-                self.requirejs(
-                    JSON.stringify(conf),
-                    "['./app/app.test']",
-                    "window.__testacular__.start();"
-                )
+                """
+                window.onerror = function(msg, url, line) {
+                  window.__testacular__.error(msg, url, line);
+                  return false;
+                };
+                """ +
+                  self.requirejs(
+                      JSON.stringify(conf),
+                      "['./app/app.test']",
+                      "window.__testacular__.start();"
+                  )
             )
         else
             cb()
@@ -321,16 +327,23 @@ class Asseto
         cb(json)
 
     requirejs: (conf, paths, init) ->
-        """
-        require.config(""" + conf + """);
-        //console.log(""" + paths + """);
-        require(""" + paths + """, function() {
-            """ + init + """
-        }, function (err) {
-            console.error(err.message);
-            throw err;
-        });
-        """
+        (fs.readFileSync (__dirname + '/vendor/stacktrace.js'), 'utf8') + "\n" +
+            """
+            require.config(""" + conf + """);
+            //console.log(""" + paths + """);
+            require(""" + paths + """, function() {
+                """ + init + """
+            }, function (err) {
+                if (err.requireType === "timeout") {
+                    throw new Error("module(s) timed out: " + err.requireModules);
+                } else if (err.requireType === 'scripterror') {
+                    console.log(printStackTrace(err.originalError));
+                    throw new Error("module(s) script error in '" + err.requireModules + "'");
+                } else {
+                  throw new Error("error loading module(s): " + err.requireModules);
+                }
+            });
+            """
 
     ############################
     ##### MANAGE
